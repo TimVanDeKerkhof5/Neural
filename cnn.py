@@ -25,49 +25,6 @@ cnnlbltest = []
 testcnn = pd.DataFrame()
 traincnn = pd.DataFrame()
 
-def initialize():
-	#initialization of dataframe used in logic.
-	catdf = pd.DataFrame()
-
-	#one-hot encoding all variables
-	for feature in selectedcat:
-		nndf[feature] = nndf[feature].fillna('N')
-		dummies = pd.get_dummies(nndf[feature],prefix=feature)
-		catdf[dummies.columns] = dummies.astype(float)
-	#taking all continuous columns, purely for headers, then imputating with fancyimpute's K nearest neighbours
-	precondf = pd.DataFrame(nndf[selectedcon])
-	condf = pd.DataFrame(KNN(3).complete(nndf[selectedcon]))
-	condf.columns = precondf.columns
-	condf.index = precondf.index
-	for feature in condf:
-		condf[feature] = normalizedata(condf[feature])
-
-	#add label (coded to int, not float)
-	lblarr = []
-	for item in nndf[selectedtarget]:
-		if item:
-			lblarr.append(0)
-		else:
-			lblarr.append(1)
-
-	dflbl = pd.DataFrame()
-
-	dflbl['lbl'] = lblarr
-	dflbl['lbl'] = dflbl.astype(int)
-	inputdf = pd.concat([catdf,condf,dflbl],axis=1,ignore_index=True)
-
-	#unhash for csv file with the final input for the neural network:
-	dftest, dftrain = train_test_split(inputdf, test_size=0.85)
-
-	#set parameters for the CNN
-	cnntrain = dftrain[dftrain.columns.difference([97])]
-	cnntest = dftest[dftest.columns.difference([97])]
-	cnnlbltrain = dftrain[97].values
-	cnnlbltest = dftest[97].values
-
-	#export for the DNN
-	dftest.to_csv(path_or_buf='test.csv',header=False,index=False)
-	dftrain.to_csv(path_or_buf='train.csv',header=False,index=False)
 
 def initforcnn():
 	#initialization of dataframe used in logic.
@@ -101,7 +58,7 @@ def initforcnn():
 	dflbl['lbl'] = dflbl.astype(int)
 	inputdf = pd.concat([catdf,condf,dflbl],axis=1,ignore_index=True)
         #unhash for csv file with the final input for the neural network:
-	dftest, dftrain = train_test_split(inputdf, test_size=0.7)
+	dftest, dftrain = train_test_split(inputdf, test_size=0.85)
 
         #set parameters for the CNN
 	cnntrain = dftrain[dftrain.columns.difference([97])]
@@ -142,8 +99,8 @@ def cnn(features, labels, mode):
 # Convolutional Layer #1
   # Computes 32 features using a 5x5 filter with ReLU activation.
   # Padding is added to preserve width and height.
-  # Input Tensor Shape: [batch_size, 28, 28, 1]
-  # Output Tensor Shape: [batch_size, 28, 28, 32]
+  # Input Tensor Shape: [batch_size, 97, 1, 1]
+  # Output Tensor Shape: [batch_size, 91, 1, 32]
 	conv1 = tf.layers.conv2d(
 		inputs=input_layer,
 		filters=32,
@@ -152,16 +109,16 @@ def cnn(features, labels, mode):
 		activation=tf.nn.relu)
 
   # Pooling Layer #1
-  # First max pooling layer with a 2x2 filter and stride of 2
-  # Input Tensor Shape: [batch_size, 28, 28, 32]
-  # Output Tensor Shape: [batch_size, 14, 14, 32]
+  # First max pooling layer with a 2x1 filter and stride of 2
+  # Input Tensor Shape: [batch_size, 97, 1, 32]
+  # Output Tensor Shape: [batch_size, 96/2, 1, 32]
 	pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 1], strides=2)
 
   # Convolutional Layer #2
-  # Computes 64 features using a 5x5 filter.
+  # Computes 64 features using a 5x1 filter.
   # Padding is added to preserve width and height.
-  # Input Tensor Shape: [batch_size, 14, 14, 32]
-  # Output Tensor Shape: [batch_size, 14, 14, 64]
+  # Input Tensor Shape: [batch_size, 97/2, 1, 32]
+  # Output Tensor Shape: [batch_size, 97/2, 1, 64]
 	conv2 = tf.layers.conv2d(
 		inputs=pool1,
 		filters=64,
@@ -170,27 +127,27 @@ def cnn(features, labels, mode):
 		activation=tf.nn.relu)
 
   # Pooling Layer #2
-  # Second max pooling layer with a 2x2 filter and stride of 2
-  # Input Tensor Shape: [batch_size, 14, 14, 64]
-  # Output Tensor Shape: [batch_size, 7, 7, 64]
+  # Second max pooling layer with a 2x1 filter and stride of 2
+  # Input Tensor Shape: [batch_size, 97/2, 1, 64]
+  # Output Tensor Shape: [batch_size, 97/4, 1, 64]
 	pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 1], strides=2)
 
   # Flatten tensor into a batch of vectors
-  # Input Tensor Shape: [batch_size, 7, 7, 64]
-  # Output Tensor Shape: [batch_size, 7 * 7 * 64]
+  # Input Tensor Shape: [batch_size, 97/4, 1, 64]
+  # Output Tensor Shape: [batch_size, 97/4 * 1 * 64]
 	pool2_flat = tf.reshape(pool2, [- 1, 24 * 1 * 64])
 
   # Dense Layer
-  # Densely connected layer with 1024 neurons
-  # Input Tensor Shape: [batch_size, 7 * 7 * 64]
+  # Densely connected layer with 2000 neurons
+  # Input Tensor Shape: [batch_size, 97/4 * 1 * 64]
   # Output Tensor Shape: [batch_size, 1024]
-	dense = tf.layers.dense(inputs=pool2_flat, units=1024, activation=tf.nn.relu)
+	dense = tf.layers.dense(inputs=pool2_flat, units=2000, activation=tf.nn.relu)
   # Add dropout operation; 0.6 probability that element will be kept
-	dropout = tf.layers.dropout(inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
+	dropout = tf.layers.dropout(inputs=dense, rate=0.3, training=mode == tf.estimator.ModeKeys.TRAIN)
 
   # Logits layer
-  # Input Tensor Shape: [batch_size, 1024]
-  # Output Tensor Shape: [batch_size, 10]
+  # Input Tensor Shape: [batch_size, 2000]
+  # Output Tensor Shape: [batch_size, 2]
 	logits = tf.layers.dense(inputs=dropout, units=2)
 
 	predictions = {
@@ -210,7 +167,7 @@ def cnn(features, labels, mode):
 
   # Configure the Training Op (for TRAIN mode)
 	if mode == tf.estimator.ModeKeys.TRAIN:
-		optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+		optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.003)
 		train_op = optimizer.minimize(loss=loss,global_step=tf.train.get_global_step())
 		return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 
